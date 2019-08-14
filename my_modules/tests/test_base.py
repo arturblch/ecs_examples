@@ -29,8 +29,8 @@ class TestBaseSystems(object):
 
         assert not point.has(base.Invader)
 
-    def test_score_zone_processor(self):
-        processor = base.ScoreZoneProcessor(self.context)
+    def test_neutral_zone_score_processor(self):
+        processor = base.NeutralZoneScoreProcessor(self.context)
 
         point = self.context.get_group(Matcher(base.Movable)).single_entity
         zone = self.context.get_group(Matcher(base.CircularZone)).single_entity
@@ -71,3 +71,20 @@ class TestBaseSystems(object):
 
         processor.execute()
         assert zone.get(base.Owner).owner_team_id == 1
+
+
+    def test_reset_zone_precessor(self):
+        processor = base.ResetZoneProcessor(self.context)
+        processor.activate()
+
+        zone = self.context.get_group(Matcher(base.CircularZone)).single_entity
+        zone.replace(base.Score, 5, 10, 1)
+        zone.replace(base.Owner, 1)
+
+        processor.execute()
+        assert zone.get(base.Owner).owner_team_id == 1
+
+        zone.replace(base.Score, 0, 10, 0)
+
+        processor.execute()
+        assert zone.get(base.Owner).owner_team_id == 0
