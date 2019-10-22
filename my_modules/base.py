@@ -67,14 +67,17 @@ class TriggerZoneProcessor(ExecuteProcessor):
                 if dist < circular_zone.radius:
                     point.add(Invader, zone._creation_index)
 
-class ScoreZoneProcessor(ExecuteProcessor):
+class NeutralZoneScoreProcessor(ExecuteProcessor):
 
     def __init__(self, context):
         self._zoneGroup = context.get_group(Matcher(CircularZone, Position))
         self._invaderGroup = context.get_group(Matcher(Invader))
 
+    def filterZone(self, zone):
+        return zone.get(Owner).owner_team_id == 0
+
     def execute(self):
-        for zone in self._zoneGroup.entities:
+        for zone in filter(self.filterZone, self._zoneGroup.entities):
             score = zone.get(Score)
             zoneInvaders = [point for point in self._invaderGroup.entities if point.get(Invader).zone_id == zone._creation_index]
             if not zoneInvaders:
@@ -114,6 +117,47 @@ class ScoreZoneProcessor(ExecuteProcessor):
                 zone.replace(Score, newScore, score.max_score, newTeamId)
 
 
+class CapturedZoneScoreProcessor(ExecuteProcessor):
+
+    def __init__(self, context):
+        self._zoneGroup = context.get_group(Matcher(CircularZone, Position))
+        self._invaderGroup = context.get_group(Matcher(Invader))
+
+    def filterZone(self, zone):
+        return zone.get(Owner).owner_team_id != 0
+
+    def execute(self):
+        for zone in filter(self.filterZone, self._zoneGroup.entities):
+            score = zone.get(Score)
+            zoneInvaders = [point for point in self._invaderGroup.entities if point.get(Invader).zone_id == zone._creation_index]
+            if not zoneInvaders:
+                continue
+
+            teamScores = defaultdict(int)
+            for point in zoneInvaders:
+                team = point.get(Team)
+                teamScores[team.team_id] += 1
+
+
+            invader_team = 1 if score.score_team_id == 2 else 2
+            scoreDiff = teamScores[score.score_team_id] - teamScores[invader_team]
+            if scoreDiff == 0:
+                continue
+
+            newScore =  score.cur_score + scoreDiff
+            if newScore > 0:
+                newTeamId = score.score_team_id
+            elif newScore < 0:
+                newTeamId = invader_team
+            else:
+                newTeamId = 0
+
+            newScore = abs(newScore)                        
+            newScore = max(min(newScore, score.max_score), 0)
+            
+            if newScore != score.cur_score or newTeamId != score.score_team_id:
+                zone.replace(Score, newScore, score.max_score, newTeamId)
+
 class CaptureZoneProcessor(ReactiveProcessor):
     def get_trigger(self):
         return {Matcher(Score): GroupEvent.ADDED}
@@ -124,10 +168,30 @@ class CaptureZoneProcessor(ReactiveProcessor):
     def react(self, entities):
         print('entities are ', entities)
         for entity in entities:
+            if entity.get(Owner).owner_team_id != 0:
+                continue
+
             score = entity.get(Score)
             if score.cur_score == score.max_score:
                 entity.replace(Owner, score.score_team_id)
 
+
+class ResetZoneProcessor(ReactiveProcessor):
+    def get_trigger(self):
+        return {Matcher(Score): GroupEvent.ADDED}
+
+    def filter(self, entity):
+        return entity.has(Score)
+
+    def react(self, entities):
+        print('entities are ', entities)
+        for entity in entities:
+            if entity.get(Owner).owner_team_id == 0:
+                continue
+
+            score = entity.get(Score)
+            if entity.get(Owner).owner_team_id != score.score_team_id:
+                entity.replace(Owner, 0)
 
 class MoveProcessor(ExecuteProcessor):
 
